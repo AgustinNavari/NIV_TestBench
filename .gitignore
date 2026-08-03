@@ -1,0 +1,41 @@
+# ==========================================
+# ESP-IDF Build & Outputs
+# ==========================================
+build/
+sdkconfig.old
+sdkconfig.ci
+
+# ==========================================
+# ESP Component Manager
+# ==========================================
+managed_components/
+dependencies.lock
+
+# ==========================================
+# Python / Virtual Environments
+# ==========================================
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ==========================================
+# IDEs & Editors
+# ==========================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/c_cpp_properties.json
+
+.idea/
+cmake-build-*/
+.settings/
+.project
+.cproject
+
+# ==========================================
+# Sistema Operativo
+# ==========================================
+.DS_Store
+Thumbs.db
