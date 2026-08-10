@@ -14,24 +14,26 @@
 
  * Automatically generated file. DO NOT EDIT.
 
- * Espressif IoT Development Framework (ESP-IDF) 5.2.7 Configuration Header
+ * Espressif IoT Development Framework (ESP-IDF) 6.0.2 Configuration Header
 
  */
        
 /* List of deprecated options */
 /*
- * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2021-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 /* CPU instruction prefetch padding size for flash mmap scenario */
-_esp_flash_mmap_prefetch_pad_size = 16;
 /* Copy from esp_secure_boot.h */
+/*
+ * PMP region granularity size
+ * Software may determine the PMP granularity by writing zero to pmp0cfg, then writing all ones
+ * to pmpaddr0, then reading back pmpaddr0. If G is the index of the least-significant bit set,
+ * the PMP granularity is 2^G+2 bytes.
+ */
 /* CPU instruction prefetch padding size for memory protection scenario */
-_esp_memprot_prefetch_pad_size = 16;
 /* Memory alignment size for PMS */
-_esp_memprot_align_size = 256;
-_esp_mmu_block_size = (0x10000);
     /* rtc timer data (s_rtc_timer_retain_mem, see esp_clk.c files). For rtc_timer_data_in_rtc_mem section. */
 /*
  * 40370000 <- IRAM/Icache -> 40378000 <- D/IRAM (I) -> 403E0000
@@ -52,7 +54,7 @@ MEMORY
    *  are connected to the data port of the CPU and eg allow byte-wise access.
    */
   /* IRAM for PRO CPU. */
-  iram0_0_seg (RX) : org = (0x40370000 + 0x4000), len = (((0x403CC700 - (0x40378000 - 0x3FC88000)) - 0x3FC88000) + 0x8000 - 0x4000)
+  iram0_0_seg (RX) : org = (0x40370000 + 0x4000), len = (((0x403CB700 - (0x40378000 - 0x3FC88000)) - 0x3FC88000) + 0x8000 - 0x4000)
   /* Flash mapped instruction data */
   iram0_2_seg (RX) : org = 0x42000020, len = 0x800000-0x20
   /**
@@ -66,10 +68,64 @@ MEMORY
    * Shared data RAM, excluding memory reserved for ROM bss/data/stack.
    * Enabling Bluetooth & Trace Memory features in menuconfig will decrease the amount of RAM available.
    */
-  dram0_0_seg (RW) : org = (0x3FC88000), len = ((0x403CC700 - (0x40378000 - 0x3FC88000)) - 0x3FC88000)
+  dram0_0_seg (RW) : org = (0x3FC88000), len = ((0x403CB700 - (0x40378000 - 0x3FC88000)) - 0x3FC88000)
   /* Flash mapped constant data */
   drom0_0_seg (R) : org = 0x3C000020, len = 0x2000000-0x20
   /* (See iram0_2_seg for meaning of 0x20 offset in the above.) */
+/**
+ *  RTC Memory Layout for ESP32-S3
+ *
+ *  ESP32-S3 has two separate RTC memory regions:
+ *  1. RTC FAST Memory: 8KB, used for RTC code and data
+ *  2. RTC SLOW Memory: 8KB, used for ULP coprocessor
+ *
+ *  ==================== RTC FAST Memory ====================
+ *  Size: 8KB (0x2000)
+ *  Address: 0x600FE000 - 0x60100000 (data and instruction access on same bus)
+ *
+ *  +-----------------------------+ 0x60100000 (RTC FAST memory end)
+ *  |     rtc_reserved_seg        |
+ *  |      (RESERVE_RTC_MEM)      |
+ *  |- - - - - - - - - - - - - - -|
+ *  | bootloader_data_rtc_mem     | s_bootloader_retain_mem
+ *  | (ESP_BOOTLOADER_RESERVE_RTC)|
+ *  |- - - - - - - - - - - - - - -|
+ *  | rtc_timer_data_in_rtc_mem   | s_rtc_timer_retain_mem (24 bytes)
+ *  | (RTC_TIMER_RESERVE_RTC)     |
+ *  +-----------------------------+ 0x60100000 - RESERVE_RTC_MEM
+ *  |     rtc_iram_seg            |
+ *  |     (= rtc_data_seg)        |
+ *  |- - - - - - - - - - - - - - -|
+ *  | .rtc.text                   | RTC wake stub code
+ *  |- - - - - - - - - - - - - - -|
+ *  | .rtc.data / .rtc.rodata     | (when CONFIG_ESP32S3_RTCDATA_IN_FAST_MEM)
+ *  |- - - - - - - - - - - - - - -|
+ *  | .rtc.bss                    |
+ *  +-----------------------------+ 0x600FE000 (RTC FAST memory start)
+ *
+ *  ==================== RTC SLOW Memory ====================
+ *  Size: 8KB (0x2000)
+ *  Address: 0x50000000 - 0x50002000
+ *
+ *  +-----------------------------+ 0x50002000 (RTC FAST memory end)
+ *  |      rtc_slow_seg           |
+ *  |- - - - - - - - - - - - - - -|
+ *  | .rtc.data / .rtc.rodata     | (when !CONFIG_ESP32S3_RTCDATA_IN_FAST_MEM)
+ *  |- - - - - - - - - - - - - - -|
+ *  | .rtc.bss                    |
+ *  +-----------------------------+ 0x50000000 + CONFIG_ULP_COPROC_RESERVE_MEM (if ULP enabled)
+ *  | ULP Coprocessor Reserve     | (Optional, CONFIG_ULP_COPROC_RESERVE_MEM)
+ *  | (code + data)               |
+ *  +-----------------------------+ 0x50000000 (RTC FAST memory start)
+ *
+ *  RESERVE_RTC_MEM calculation:
+ *    - RTC_TIMER_RESERVE_RTC = 24 bytes
+ *    - ESP_BOOTLOADER_RESERVE_RTC = ALIGN_UP(CONFIG_BOOTLOADER_RESERVE_RTC_SIZE, 8)
+ *
+ *  Note: RTC FAST memory shares the same address range for both data and
+ *        instruction access. RTC data can be placed in either FAST or SLOW
+ *        memory based on CONFIG_ESP32S3_RTCDATA_IN_FAST_MEM configuration.
+ */
   /**
    * RTC fast memory (executable). Persists over deep sleep.
    */
@@ -93,10 +149,10 @@ MEMORY
    */
   extern_ram_seg(RWX) : org = 0x3c000020 , len = 0x2000000-0x20
 }
+_diram_i_start = 0x40378000;
 _heap_start = _heap_low_start;
 /* Heap ends at top of dram0_0_seg */
 _heap_end = 0x40000000;
-_data_seg_org = ORIGIN(rtc_data_seg);
 /* RTC fast memory shares the same range for both data and instructions */
 REGION_ALIAS("rtc_data_seg", rtc_iram_seg );
 REGION_ALIAS("rtc_data_location", rtc_slow_seg );

@@ -35,6 +35,8 @@
  
  #define TIC_CMD_GO_HOME 0x97
  
+ #define TIC_CMD_SET_TARGET_POSITION  0xE0
+ 
  #define TIC_CMD_RESET_COMMAND_TIMEOUT 0x8C
 
  static i2c_master_bus_handle_t i2c_bus_handle = NULL;
@@ -109,15 +111,40 @@
 
  esp_err_t tic_driver_set_target_position(int32_t target_position)
  {
+     uint8_t command[5];
+
+     command[0] = TIC_CMD_SET_TARGET_POSITION;
+     command[1] = (uint8_t)(target_position);
+     command[2] = (uint8_t)(target_position >> 8);
+     command[3] = (uint8_t)(target_position >> 16);
+     command[4] = (uint8_t)(target_position >> 24);
+
+     esp_err_t err = i2c_master_transmit(
+         tic_device_handle,
+         command,
+         sizeof(command),
+         TIC_I2C_TIMEOUT_MS
+     );
+
+     if (err != ESP_OK)
+     {
+         ESP_LOGE(
+             TAG,
+             "Could not set target position: %s",
+             esp_err_to_name(err)
+         );
+
+         return err;
+     }
+
      ESP_LOGI(
          TAG,
-         "Tic target position set to %" PRId32 " [simulated]",
+         "Target position set to %" PRId32,
          target_position
      );
 
      return ESP_OK;
  }
-
  esp_err_t tic_driver_halt_and_hold(void)
  {
      ESP_LOGI(TAG, "Tic halt and hold [simulated]");

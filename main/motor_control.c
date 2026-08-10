@@ -109,20 +109,59 @@ esp_err_t motor_control_move_to(int32_t target)
         return ESP_ERR_INVALID_STATE;
     }
 
+    tic_status_t status;
+
+    esp_err_t err = tic_driver_get_status(&status);
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    if (status.position_uncertain)
+    {
+        ESP_LOGE(TAG, "Cannot move: position is uncertain");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (status.homing_active)
+    {
+        ESP_LOGE(TAG, "Cannot move while homing");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /*
+     * Justo antes de ordenar movimiento limpiamos
+     * las condiciones necesarias del Tic.
+     */
+    err = tic_driver_reset_command_timeout();
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = tic_driver_exit_safe_start();
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = tic_driver_set_target_position(target);
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
     target_position = target;
 
     ESP_LOGI(
         TAG,
-        "Moving from %" PRId32 " to %" PRId32 " [simulated]",
-        current_position,
+        "Moving to target position %" PRId32,
         target_position
     );
-
-    /*
-     * Simulación instantánea.
-     * Más adelante el Tic ejecutará realmente el movimiento.
-     */
-    current_position = target_position;
 
     return ESP_OK;
 }
