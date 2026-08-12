@@ -18,6 +18,7 @@
  #include "esp_check.h"
 
  #include "motor_control.h"
+ #include "scenario.h"
 
  static int command_enable(int argc, char **argv)
  {
@@ -199,6 +200,253 @@
      return 0;
  }
  
+ static int command_velocity(int argc, char **argv)
+ {
+     if (argc != 2)
+     {
+         printf("Usage: velocity <value>\n");
+         return 1;
+     }
+
+     errno = 0;
+
+     char *end_pointer = NULL;
+     long parsed_velocity = strtol(argv[1], &end_pointer, 10);
+
+     if (errno != 0 ||
+         end_pointer == argv[1] ||
+         *end_pointer != '\0' ||
+         parsed_velocity < INT32_MIN ||
+         parsed_velocity > INT32_MAX)
+     {
+         printf("Invalid velocity: %s\n", argv[1]);
+         return 1;
+     }
+
+     esp_err_t err = motor_control_set_velocity(
+         (int32_t)parsed_velocity
+     );
+
+     if (err != ESP_OK)
+     {
+         printf(
+             "Velocity command rejected: %s\n",
+             esp_err_to_name(err)
+         );
+
+         return 1;
+     }
+
+     printf(
+         "Target velocity: %ld\n",
+         parsed_velocity
+     );
+
+     return 0;
+ }
+ 
+ static int command_flow(int argc, char **argv)
+ {
+     if (argc != 2)
+     {
+         printf("Usage: flow <ml_per_s>\n");
+         return 1;
+     }
+
+     errno = 0;
+
+     char *end_pointer = NULL;
+     float flow_ml_s = strtof(argv[1], &end_pointer);
+
+     if (errno != 0 ||
+         end_pointer == argv[1] ||
+         *end_pointer != '\0')
+     {
+         printf("Invalid flow: %s\n", argv[1]);
+         return 1;
+     }
+
+     esp_err_t err =
+         motor_control_set_flow(flow_ml_s);
+
+     if (err != ESP_OK)
+     {
+         printf(
+             "Flow command rejected: %s\n",
+             esp_err_to_name(err)
+         );
+
+         return 1;
+     }
+
+     printf("Target flow: %.2f mL/s\n", flow_ml_s);
+
+     return 0;
+ }
+ 
+ static int command_move_ml(int argc, char **argv)
+ {
+     if (argc != 2)
+     {
+         printf("Usage: move_ml <volume_ml>\n");
+         return 1;
+     }
+
+     errno = 0;
+
+     char *end_pointer = NULL;
+     float volume_ml = strtof(argv[1], &end_pointer);
+
+     if (errno != 0 ||
+         end_pointer == argv[1] ||
+         *end_pointer != '\0')
+     {
+         printf("Invalid volume: %s\n", argv[1]);
+         return 1;
+     }
+
+     esp_err_t err =
+         motor_control_move_to_volume(volume_ml);
+
+     if (err != ESP_OK)
+     {
+         printf(
+             "Move command rejected: %s\n",
+             esp_err_to_name(err)
+         );
+
+         return 1;
+     }
+
+     printf("Target volume: %.2f mL\n", volume_ml);
+
+     return 0;
+ }
+ 
+ static int command_scenario(int argc, char **argv)
+ {
+     if (argc != 2)
+     {
+         printf(
+             "Usage:\n"
+             "  scenario <id>\n"
+             "  scenario stop\n"
+             "  scenario status\n"
+         );
+
+         return 1;
+     }
+
+
+     /*
+      * scenario stop
+      */
+     if (strcmp(argv[1], "stop") == 0)
+     {
+         esp_err_t err = scenario_stop();
+
+         if (err != ESP_OK)
+         {
+             printf(
+                 "Could not stop scenario: %s\n",
+                 esp_err_to_name(err)
+             );
+
+             return 1;
+         }
+
+         printf("Scenario stop requested\n");
+
+         return 0;
+     }
+
+
+     /*
+      * scenario status
+      */
+     if (strcmp(argv[1], "status") == 0)
+     {
+         scenario_state_t state =
+             scenario_get_state();
+
+         switch (state)
+         {
+             case SCENARIO_STATE_IDLE:
+                 printf("Scenario state: IDLE\n");
+                 break;
+
+             case SCENARIO_STATE_RUNNING:
+                 printf("Scenario state: RUNNING\n");
+                 break;
+
+             case SCENARIO_STATE_FINISHED:
+                 printf("Scenario state: FINISHED\n");
+                 break;
+
+             case SCENARIO_STATE_ERROR:
+                 printf("Scenario state: ERROR\n");
+                 break;
+
+             default:
+                 printf("Scenario state: UNKNOWN\n");
+                 break;
+         }
+
+         return 0;
+     }
+
+
+     /*
+      * Si no fue "stop" ni "status",
+      * interpretamos el argumento como ID.
+      */
+
+     errno = 0;
+
+     char *end_pointer = NULL;
+
+     long scenario_id =
+         strtol(argv[1], &end_pointer, 10);
+
+
+     if (errno != 0 ||
+         end_pointer == argv[1] ||
+         *end_pointer != '\0' ||
+         scenario_id < 0 ||
+         scenario_id > UINT8_MAX)
+     {
+         printf(
+             "Invalid scenario ID: %s\n",
+             argv[1]
+         );
+
+         return 1;
+     }
+
+
+     esp_err_t err =
+         scenario_start((uint8_t)scenario_id);
+
+
+     if (err != ESP_OK)
+     {
+         printf(
+             "Could not start scenario: %s\n",
+             esp_err_to_name(err)
+         );
+
+         return 1;
+     }
+
+
+     printf(
+         "Scenario %ld started\n",
+         scenario_id
+     );
+
+     return 0;
+ }
+ 
  esp_err_t motor_commands_register(void)
  {
      const esp_console_cmd_t enable_command = {
@@ -242,6 +490,58 @@
 	     .hint = NULL,
 	     .func = command_home,
 	 };
+	 
+	 const esp_console_cmd_t velocity_command = {
+	     .command = "velocity",
+	     .help = "Set Tic target velocity",
+	     .hint = "<velocity>",
+	     .func = command_velocity,
+	 };
+	 
+	 const esp_console_cmd_t move_ml_command = {
+	     .command = "move_ml",
+	     .help = "Move syringe to a target volume",
+	     .hint = "<volume_ml>",
+	     .func = command_move_ml,
+	 };
+	 
+	 const esp_console_cmd_t flow_command = {
+	     .command = "flow",
+	     .help = "Set syringe flow in mL/s",
+	     .hint = "<ml_per_s>",
+	     .func = command_flow,
+	 };
+	 
+	 const esp_console_cmd_t scenario_command = {
+	     .command = "scenario",
+	     .help = "Run or control a predefined syringe scenario",
+	     .hint = "<id|stop|status>",
+	     .func = command_scenario,
+	 };
+	 
+	 ESP_RETURN_ON_ERROR(
+	     esp_console_cmd_register(&scenario_command),
+	     "MOTOR_COMMANDS",
+	     "Could not register scenario command"
+	 );
+
+	 ESP_RETURN_ON_ERROR(
+	     esp_console_cmd_register(&flow_command),
+	     "MOTOR_COMMANDS",
+	     "Could not register flow command"
+	 );
+
+	 ESP_RETURN_ON_ERROR(
+	     esp_console_cmd_register(&move_ml_command),
+	     "MOTOR_COMMANDS", 
+	     "Could not register move_ml command"
+	 );
+	 
+	 ESP_RETURN_ON_ERROR(
+	     esp_console_cmd_register(&velocity_command),
+	     "MOTOR_COMMANDS",
+	     "Could not register velocity command"
+	 );
 	 
 	 ESP_RETURN_ON_ERROR(
 	     esp_console_cmd_register(&home_command),

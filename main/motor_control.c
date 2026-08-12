@@ -7,6 +7,7 @@
 #include "esp_log.h"
 
 #include "tic_driver.h"
+#include "motion_units.h"
 
 #define MOTOR_HOME_DIRECTION TIC_HOME_REVERSE
 
@@ -130,10 +131,7 @@ esp_err_t motor_control_move_to(int32_t target)
         return ESP_ERR_INVALID_STATE;
     }
 
-    /*
-     * Justo antes de ordenar movimiento limpiamos
-     * las condiciones necesarias del Tic.
-     */
+
     err = tic_driver_reset_command_timeout();
 
     if (err != ESP_OK)
@@ -166,6 +164,52 @@ esp_err_t motor_control_move_to(int32_t target)
     return ESP_OK;
 }
 
+esp_err_t motor_control_set_velocity(int32_t velocity)
+{
+    if (!motor_enabled)
+    {
+        ESP_LOGE(TAG, "Cannot set velocity: motor disabled");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    tic_status_t status;
+
+    esp_err_t err = tic_driver_get_status(&status);
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    if (status.position_uncertain)
+    {
+        ESP_LOGE(TAG, "Cannot move: position is uncertain");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (status.homing_active)
+    {
+        ESP_LOGE(TAG, "Cannot change velocity while homing");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    err = tic_driver_reset_command_timeout();
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    err = tic_driver_exit_safe_start();
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    return tic_driver_set_target_velocity(velocity);
+}
+
 esp_err_t motor_control_stop(void)
 {
     target_position = current_position;
@@ -173,6 +217,37 @@ esp_err_t motor_control_stop(void)
     ESP_LOGI(TAG, "Motor stopped");
 
     return ESP_OK;
+}
+
+esp_err_t motor_control_move_to_volume(float volume_ml)
+{
+    int32_t target_microsteps =
+        syringe_kinematics_ml_to_microsteps(volume_ml);
+
+    ESP_LOGI(
+        TAG,
+        "Volume %.2f mL -> %" PRId32 " microsteps",
+        volume_ml,
+        target_microsteps
+    );
+
+    return motor_control_move_to(target_microsteps);
+}
+
+
+esp_err_t motor_control_set_flow(float flow_ml_s)
+{
+    int32_t tic_velocity =
+        syringe_kinematics_flow_to_tic_velocity(flow_ml_s);
+
+    ESP_LOGI(
+        TAG,
+        "Flow %.2f mL/s -> Tic velocity %" PRId32,
+        flow_ml_s,
+        tic_velocity
+    );
+
+    return motor_control_set_velocity(tic_velocity);
 }
 
 bool motor_control_is_enabled(void)

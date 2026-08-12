@@ -22,6 +22,11 @@
  esp_err_t motor_control_move_to(int32_t target_position);
  esp_err_t motor_control_move_relative(int32_t displacement);
  esp_err_t motor_control_stop(void);
+ 
+ esp_err_t motor_control_set_velocity(int32_t velocity);
+ 
+ esp_err_t motor_control_move_to_volume(float volume_ml);
+ esp_err_t motor_control_set_flow(float flow_ml_s);
 
  bool motor_control_is_enabled(void);
  int32_t motor_control_get_current_position(void);

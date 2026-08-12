@@ -26,6 +26,7 @@
  #define TIC_VAR_MISC_FLAGS         0x01
  #define TIC_VAR_ERROR_STATUS       0x02
  #define TIC_VAR_CURRENT_POSITION   0x22
+ #define TIC_CMD_SET_TARGET_VELOCITY 0xE3
 
  #define TIC_I2C_TIMEOUT_MS         100
  
@@ -392,4 +393,22 @@
      }
 
      return err;
+ }
+ 
+ esp_err_t tic_driver_set_target_velocity(int32_t velocity)
+ {
+     uint8_t command[5];
+
+     command[0] = TIC_CMD_SET_TARGET_VELOCITY;
+     command[1] = (uint8_t)(velocity);
+     command[2] = (uint8_t)(velocity >> 8);
+     command[3] = (uint8_t)(velocity >> 16);
+     command[4] = (uint8_t)(velocity >> 24);
+
+     return i2c_master_transmit(
+         tic_device_handle,
+         command,
+         sizeof(command),
+         TIC_I2C_TIMEOUT_MS
+     );
  }

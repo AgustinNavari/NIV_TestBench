@@ -7,7 +7,9 @@ idf_component_register(
      "motor_control.c"
      "motor_commands.c"
      "console_app.c"
-     "tic_driver.c"    
+     "tic_driver.c"
+     "motion_units.c"
+     "scenario.c"    
     INCLUDE_DIRS		# optional, add here public include directories
     "."        
     PRIV_INCLUDE_DIRS   # optional, add here private include directories
