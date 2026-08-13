@@ -9,13 +9,14 @@ idf_component_register(
      "console_app.c"
      "tic_driver.c"
      "motion_units.c"
-     "scenario.c"    
+     "scenario.c"
+     "breath_reference.c"    
     INCLUDE_DIRS		# optional, add here public include directories
     "."        
     PRIV_INCLUDE_DIRS   # optional, add here private include directories
     REQUIRES            # optional, list the public requirements (component names)
     PRIV_REQUIRES       # optional, list the private requirements
     	esp_driver_i2c
-    	#driver
+    	esp_timer
     	console
 )

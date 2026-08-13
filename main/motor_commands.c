@@ -379,10 +379,6 @@
                  printf("Scenario state: RUNNING\n");
                  break;
 
-             case SCENARIO_STATE_FINISHED:
-                 printf("Scenario state: FINISHED\n");
-                 break;
-
              case SCENARIO_STATE_ERROR:
                  printf("Scenario state: ERROR\n");
                  break;
