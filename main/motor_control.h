@@ -33,7 +33,7 @@
  int32_t motor_control_get_target_position(void);
  
  esp_err_t motor_control_get_tic_status(tic_status_t *status);
- 
+ esp_err_t motor_control_set_position(int32_t position);
  esp_err_t motor_control_home(void);
 
  #endif

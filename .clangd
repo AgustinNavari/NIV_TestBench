@@ -1,3 +1,3 @@
 CompileFlags:
-  CompilationDatabase: build
+  CompilationDatabase: C:\Users\agusn\workspace\NIV_TestBench\build
   Remove: [-m*, -f*]

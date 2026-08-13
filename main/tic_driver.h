@@ -49,4 +49,5 @@
  esp_err_t tic_driver_reset_command_timeout(void);
  esp_err_t tic_driver_set_target_velocity(int32_t velocity);
 
+ esp_err_t tic_driver_halt_and_set_position(int32_t position);
  #endif

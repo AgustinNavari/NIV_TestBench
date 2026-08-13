@@ -321,3 +321,28 @@ esp_err_t motor_control_home(void)
 
     return ESP_OK;
 }
+
+esp_err_t motor_control_set_position(int32_t position)
+{
+    if (!motor_enabled)
+    {
+        ESP_LOGE(TAG, "Cannot set position: motor is disabled");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err =
+        tic_driver_halt_and_set_position(position);
+
+    if (err != ESP_OK)
+    {
+        return err;
+    }
+
+    ESP_LOGI(
+        TAG,
+        "Current position set to %" PRId32,
+        position
+    );
+
+    return ESP_OK;
+}

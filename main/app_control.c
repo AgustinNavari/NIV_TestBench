@@ -275,16 +275,66 @@
  {
      switch (app_state)
      {
-         case APP_STATE_READY:
+		case APP_STATE_READY:
+		{
+		    ESP_LOGI(
+		        TAG,
+		        "READY -> starting basal scenario"
+		    );
 
-             /*
-              * Primer click:
-              * referenciamos nuevamente
-              * y arrancamos basal.
-              */
-             start_homing(true);
+		    esp_err_t err =
+		        motor_control_enable();
 
-             break;
+		    if (err != ESP_OK)
+		    {
+		        ESP_LOGE(
+		            TAG,
+		            "Could not enable motor: %s",
+		            esp_err_to_name(err)
+		        );
+
+		        break;
+		    }
+
+		    /*
+		     * El mecanismo acaba de quedar físicamente
+		     * en cero después del homing inicial.
+		     *
+		     * Como estuvo desenergizado, el Tic marcó
+		     * la posición como uncertain.
+		     *
+		     * Le volvemos a informar que la posición
+		     * actual es cero.
+		     */
+		    err = motor_control_set_position(0);
+
+		    if (err != ESP_OK)
+		    {
+		        ESP_LOGE(
+		            TAG,
+		            "Could not restore zero position: %s",
+		            esp_err_to_name(err)
+		        );
+
+		        motor_control_disable();
+
+		        break;
+		    }
+
+		    err = start_scenario_running(1);
+
+		    if (err != ESP_OK)
+		    {
+		        ESP_LOGE(
+		            TAG,
+		            "Could not start basal scenario"
+		        );
+
+		        motor_control_disable();
+		    }
+
+		    break;
+		}
 
 
          case APP_STATE_SCENARIO:

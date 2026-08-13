@@ -412,3 +412,40 @@
          TIC_I2C_TIMEOUT_MS
      );
  }
+ 
+ esp_err_t tic_driver_halt_and_set_position(int32_t position)
+ {
+     uint8_t command[] = {
+         0xEC,
+         (uint8_t)(position),
+         (uint8_t)(position >> 8),
+         (uint8_t)(position >> 16),
+         (uint8_t)(position >> 24)
+     };
+
+     esp_err_t err = i2c_master_transmit(
+         tic_device_handle,
+         command,
+         sizeof(command),
+         TIC_I2C_TIMEOUT_MS
+     );
+
+     if (err != ESP_OK)
+     {
+         ESP_LOGE(
+             TAG,
+             "Could not set position: %s",
+             esp_err_to_name(err)
+         );
+
+         return err;
+     }
+
+     ESP_LOGI(
+         TAG,
+         "Position set to %" PRId32,
+         position
+     );
+
+     return ESP_OK;
+ }
