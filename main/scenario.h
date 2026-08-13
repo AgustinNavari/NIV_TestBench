@@ -28,5 +28,7 @@ scenario_state_t scenario_get_state(void);
 
 bool scenario_is_running(void);
 
+uint8_t scenario_get_count(void);
+
 
 #endif

@@ -11,19 +11,41 @@
  #include <limits.h>
  #include <stdio.h>
  #include <stdlib.h>
-#include <inttypes.h>
-
+ #include <inttypes.h>
+ #include "app_control.h"
  #include "esp_console.h"
  #include "esp_err.h"
  #include "esp_check.h"
-
+ #include "app_control.h"
  #include "motor_control.h"
  #include "scenario.h"
 
+ static bool serial_control_required(void)
+ {
+     if (!app_control_serial_control_enabled())
+     {
+         printf(
+             "Command rejected: "
+             "system is not in SERIAL mode.\n"
+             "From READY, hold the button for 3 seconds "
+             "to enter SERIAL mode.\n"
+         );
+
+         return false;
+     }
+
+     return true;
+ }
+ 
  static int command_enable(int argc, char **argv)
  {
      (void)argc;
      (void)argv;
+	 
+	 if (!serial_control_required())
+	 {
+	     return 1;
+	 }
 
      esp_err_t error = motor_control_enable();
 
@@ -42,6 +64,11 @@
  {
      (void)argc;
      (void)argv;
+	 
+	 if (!serial_control_required())
+	 {
+	     return 1;
+	 }
 
      esp_err_t error = motor_control_disable();
 
@@ -60,6 +87,11 @@
  {
      (void)argc;
      (void)argv;
+	 
+	 if (!serial_control_required())
+	 {
+	     return 1;
+	 }
 
      esp_err_t error = motor_control_stop();
 
@@ -142,6 +174,12 @@
 
  static int command_move(int argc, char **argv)
  {
+	
+	if (!serial_control_required())
+	{
+	    return 1;
+	}
+	
      if (argc != 2)
      {
          printf("Usage: move <target_position>\n");
@@ -182,6 +220,11 @@
  {
      (void)argc;
      (void)argv;
+	 
+	 if (!serial_control_required())
+	 {
+	     return 1;
+	 }
 
      esp_err_t err = motor_control_home();
 
@@ -202,7 +245,13 @@
  
  static int command_velocity(int argc, char **argv)
  {
-     if (argc != 2)
+     
+	if (!serial_control_required())
+	{
+	    return 1;
+	}
+	
+	if (argc != 2)
      {
          printf("Usage: velocity <value>\n");
          return 1;
@@ -247,7 +296,12 @@
  
  static int command_flow(int argc, char **argv)
  {
-     if (argc != 2)
+	if (!serial_control_required())
+	{
+	    return 1;
+	}
+	
+	if (argc != 2)
      {
          printf("Usage: flow <ml_per_s>\n");
          return 1;
@@ -286,7 +340,13 @@
  
  static int command_move_ml(int argc, char **argv)
  {
-     if (argc != 2)
+     
+	if (!serial_control_required())
+	{
+	    return 1;
+	}
+	
+	if (argc != 2)
      {
          printf("Usage: move_ml <volume_ml>\n");
          return 1;
@@ -339,30 +399,8 @@
 
 
      /*
-      * scenario stop
-      */
-     if (strcmp(argv[1], "stop") == 0)
-     {
-         esp_err_t err = scenario_stop();
-
-         if (err != ESP_OK)
-         {
-             printf(
-                 "Could not stop scenario: %s\n",
-                 esp_err_to_name(err)
-             );
-
-             return 1;
-         }
-
-         printf("Scenario stop requested\n");
-
-         return 0;
-     }
-
-
-     /*
       * scenario status
+      * Permitido siempre.
       */
      if (strcmp(argv[1], "status") == 0)
      {
@@ -393,10 +431,44 @@
 
 
      /*
+      * A partir de acá, cualquier comando
+      * modifica el funcionamiento.
+      *
+      * Por lo tanto requiere SERIAL MODE.
+      */
+     if (!serial_control_required())
+     {
+         return 1;
+     }
+
+
+     /*
+      * scenario stop
+      */
+     if (strcmp(argv[1], "stop") == 0)
+     {
+         esp_err_t err = scenario_stop();
+
+         if (err != ESP_OK)
+         {
+             printf(
+                 "Could not stop scenario: %s\n",
+                 esp_err_to_name(err)
+             );
+
+             return 1;
+         }
+
+         printf("Scenario stop requested\n");
+
+         return 0;
+     }
+
+
+     /*
       * Si no fue "stop" ni "status",
       * interpretamos el argumento como ID.
       */
-
      errno = 0;
 
      char *end_pointer = NULL;
@@ -439,6 +511,40 @@
          "Scenario %ld started\n",
          scenario_id
      );
+
+     return 0;
+ }
+ 
+ static int command_mode(int argc,char **argv)
+ {
+     app_state_t state = app_control_get_state();
+
+
+     switch (state)
+     {
+         case APP_STATE_HOMING:
+             printf("Mode: HOMING\n");
+             break;
+
+         case APP_STATE_READY:
+             printf(
+                 "Mode: READY "
+                 "(motor disabled)\n"
+             );
+             break;
+
+         case APP_STATE_SCENARIO:
+             printf(
+                 "Mode: AUTOMATIC\n"
+             );
+             break;
+
+         case APP_STATE_SERIAL:
+             printf(
+                 "Mode: SERIAL CONTROL\n"
+             );
+             break;
+     }
 
      return 0;
  }
@@ -514,6 +620,21 @@
 	     .hint = "<id|stop|status>",
 	     .func = command_scenario,
 	 };
+	 
+	 const esp_console_cmd_t mode_command = {
+	     .command = "mode",
+	     .help = "Show current operating mode",
+	     .hint = NULL,
+	     .func = command_mode,
+	 };
+
+	 ESP_RETURN_ON_ERROR(
+	     esp_console_cmd_register(
+	         &mode_command
+	     ),
+	     "MOTOR_COMMANDS",
+	     "Could not register mode command"
+	 );
 	 
 	 ESP_RETURN_ON_ERROR(
 	     esp_console_cmd_register(&scenario_command),

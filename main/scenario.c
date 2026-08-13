@@ -47,14 +47,14 @@
      {
          .id = 1,
          .name = "Normal breathing",
-         .respiratory_rate_bpm = 20.0f,
+         .respiratory_rate_bpm = 15.0f,
          .tidal_volume_ml = 300.0f
      },
 
      {
          .id = 2,
          .name = "Normal 500 mL",
-         .respiratory_rate_bpm = 12.0f,
+         .respiratory_rate_bpm = 22.0f,
          .tidal_volume_ml = 500.0f
      },
 
@@ -62,14 +62,14 @@
          .id = 3,
          .name = "Fast breathing",
          .respiratory_rate_bpm = 30.0f,
-         .tidal_volume_ml = 800.0f
+         .tidal_volume_ml = 700.0f
      },
 
      {
          .id = 4,
          .name = "Fast deep breathing",
-         .respiratory_rate_bpm = 30.0f,
-         .tidal_volume_ml = 1000.0f
+         .respiratory_rate_bpm = 35.0f,
+         .tidal_volume_ml = 700.0f
      }
  };
 
@@ -284,4 +284,12 @@
  bool scenario_is_running(void)
  {
      return scenario_state == SCENARIO_STATE_RUNNING;
+ }
+ 
+ uint8_t scenario_get_count(void)
+ {
+     return (uint8_t)(
+         sizeof(scenarios) /
+         sizeof(scenarios[0])
+     );
  }

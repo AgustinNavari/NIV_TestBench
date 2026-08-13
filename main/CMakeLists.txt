@@ -11,6 +11,7 @@ idf_component_register(
      "motion_units.c"
      "scenario.c"
      "breath_reference.c"    
+     "app_control.c"
     INCLUDE_DIRS		# optional, add here public include directories
     "."        
     PRIV_INCLUDE_DIRS   # optional, add here private include directories
@@ -18,5 +19,6 @@ idf_component_register(
     PRIV_REQUIRES       # optional, list the private requirements
     	esp_driver_i2c
     	esp_timer
+    	esp_driver_gpio
     	console
 )
