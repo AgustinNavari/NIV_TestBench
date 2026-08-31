@@ -142,7 +142,5 @@
      /*
       * Escalamos la curva al VT solicitado.
       */
-     return tidal_volume_ml *
-            reference_volume_ml /
-            reference.max_volume_ml;
+     return (tidal_volume_ml * reference_volume_ml / reference.max_volume_ml);
  }

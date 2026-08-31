@@ -47,15 +47,15 @@
      {
          .id = 1,
          .name = "Normal breathing",
-         .respiratory_rate_bpm = 15.0f,
-         .tidal_volume_ml = 300.0f
+         .respiratory_rate_bpm = 22.0f,
+         .tidal_volume_ml = 500.0f
      },
 
      {
          .id = 2,
          .name = "Normal 500 mL",
-         .respiratory_rate_bpm = 22.0f,
-         .tidal_volume_ml = 500.0f
+         .respiratory_rate_bpm = 30.0f,
+         .tidal_volume_ml = 300.0f
      },
 
      {
@@ -68,8 +68,8 @@
      {
          .id = 4,
          .name = "Fast deep breathing",
-         .respiratory_rate_bpm = 35.0f,
-         .tidal_volume_ml = 700.0f
+         .respiratory_rate_bpm = 15.0f,
+         .tidal_volume_ml = 300.0f
      }
  };
 
