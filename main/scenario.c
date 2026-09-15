@@ -40,33 +40,48 @@
      float respiratory_rate_bpm;
      float tidal_volume_ml;
 
+     bool sigh_enabled;
+     uint8_t normal_breaths_before_sigh;
+     float sigh_tidal_volume_ml;
+
  } scenario_definition_t;
 
  static const scenario_definition_t scenarios[] =
  {
+	{
+	    .id = 1,
+	    .name = "Normal breathing with sigh",
+	    .respiratory_rate_bpm = 22.0f,
+	    .tidal_volume_ml = 500.0f,
+
+	    .sigh_enabled = true,
+	    .normal_breaths_before_sigh = 10,
+	    .sigh_tidal_volume_ml = 900.0f
+	},
+	
      {
-         .id = 1,
+         .id = 2,
          .name = "Normal breathing",
          .respiratory_rate_bpm = 22.0f,
          .tidal_volume_ml = 500.0f
      },
 
      {
-         .id = 2,
+         .id = 3,
          .name = "Normal 500 mL",
          .respiratory_rate_bpm = 30.0f,
          .tidal_volume_ml = 300.0f
      },
 
      {
-         .id = 3,
+         .id = 4,
          .name = "Fast breathing",
          .respiratory_rate_bpm = 30.0f,
          .tidal_volume_ml = 700.0f
      },
 
      {
-         .id = 4,
+         .id = 5,
          .name = "Fast deep breathing",
          .respiratory_rate_bpm = 15.0f,
          .tidal_volume_ml = 300.0f
@@ -126,12 +141,62 @@
              (float)(now_us - start_time_us) /
              1000000.0f;
 
-         const float target_volume_ml =
-             breath_reference_get_volume(
-                 scenario->respiratory_rate_bpm,
-                 scenario->tidal_volume_ml,
-                 time_s
-             );
+			 float target_tidal_volume_ml =
+			     scenario->tidal_volume_ml;
+
+			 float breath_time_s = time_s;
+
+			 if (scenario->sigh_enabled)
+			 {
+			     const float breath_period_s =
+			         60.0f /
+			         scenario->respiratory_rate_bpm;
+
+			     const uint32_t breath_index =
+			         (uint32_t)(
+			             time_s /
+			             breath_period_s
+			         );
+
+			     const uint32_t cycle_length =
+			         scenario->normal_breaths_before_sigh + 1;
+
+			     const uint32_t breath_in_cycle =
+			         breath_index % cycle_length;
+
+			     /*
+			      * Ejemplo con normal_breaths_before_sigh = 5:
+			      *
+			      * 0 -> normal
+			      * 1 -> normal
+			      * 2 -> normal
+			      * 3 -> normal
+			      * 4 -> normal
+			      * 5 -> sigh
+			      * 0 -> normal ...
+			      */
+			     if (breath_in_cycle ==
+			         scenario->normal_breaths_before_sigh)
+			     {
+			         target_tidal_volume_ml =
+			             scenario->sigh_tidal_volume_ml;
+			     }
+
+			     /*
+			      * Tiempo relativo a la respiración actual.
+			      */
+			     breath_time_s =
+			         time_s -
+			         ((float)breath_index *
+			          breath_period_s);
+			 }
+
+			 const float target_volume_ml =
+			     breath_reference_get_volume(
+			         scenario->respiratory_rate_bpm,
+			         target_tidal_volume_ml,
+			         breath_time_s
+			     );
 
          esp_err_t err =
              motor_control_move_to_volume(
