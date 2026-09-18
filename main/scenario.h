@@ -24,6 +24,8 @@ esp_err_t scenario_start(
 
 esp_err_t scenario_stop(void);
 
+esp_err_t scenario_request_change(uint8_t scenario_id);
+
 scenario_state_t scenario_get_state(void);
 
 bool scenario_is_running(void);

@@ -204,7 +204,14 @@
      {
          start_scenario_after_home = false;
 
-         start_scenario_running(1);
+		 esp_err_t err =
+		     scenario_request_change(1);
+
+		 if (err == ESP_OK)
+		 {
+		     current_scenario = 1;
+		     demanding_start_us = 0;
+		 }
 
          return;
      }
@@ -337,23 +344,58 @@
 		}
 
 
-         case APP_STATE_SCENARIO:
-         {
-             uint8_t next =
-                 current_scenario + 1;
+		case APP_STATE_SCENARIO:
+		{
+		    uint8_t next =
+		        current_scenario + 1;
 
-             uint8_t count =
-                 scenario_get_count();
+		    uint8_t count =
+		        scenario_get_count();
 
-             if (next > count)
-             {
-                 next = 1;
-             }
+		    if (next > count)
+		    {
+		        next = 1;
+		    }
 
-             start_scenario_running(next);
+		    esp_err_t err =
+		        scenario_request_change(next);
 
-             break;
-         }
+		    if (err == ESP_OK)
+		    {
+		        /*
+		         * Guardamos cuál será el escenario
+		         * seleccionado.
+		         */
+		        current_scenario = next;
+
+		        if (next > 1)
+		        {
+		            demanding_start_us =
+		                esp_timer_get_time();
+		        }
+		        else
+		        {
+		            demanding_start_us = 0;
+		        }
+
+		        ESP_LOGI(
+		            TAG,
+		            "Scenario %u selected - transition pending",
+		            next
+		        );
+		    }
+		    else
+		    {
+		        ESP_LOGE(
+		            TAG,
+		            "Could not request scenario %u: %s",
+		            next,
+		            esp_err_to_name(err)
+		        );
+		    }
+
+		    break;
+		}
 
 
          case APP_STATE_SERIAL:

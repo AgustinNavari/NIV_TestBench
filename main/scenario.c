@@ -59,30 +59,24 @@
 	    .sigh_tidal_volume_ml = 900.0f
 	},
 	
-     {
-         .id = 2,
-         .name = "Normal breathing",
-         .respiratory_rate_bpm = 22.0f,
-         .tidal_volume_ml = 500.0f
-     },
 
      {
-         .id = 3,
+         .id = 2,
          .name = "Normal 500 mL",
          .respiratory_rate_bpm = 30.0f,
          .tidal_volume_ml = 300.0f
      },
 
      {
-         .id = 4,
-         .name = "Fast breathing",
-         .respiratory_rate_bpm = 30.0f,
-         .tidal_volume_ml = 700.0f
+         .id = 3,
+         .name = "Fast deep breathing",
+         .respiratory_rate_bpm = 35.0f,
+         .tidal_volume_ml = 650.0f
      },
 
      {
-         .id = 5,
-         .name = "Fast deep breathing",
+         .id = 4,
+         .name = "Fast breathing",
          .respiratory_rate_bpm = 15.0f,
          .tidal_volume_ml = 300.0f
      }
@@ -95,6 +89,7 @@
  static TaskHandle_t scenario_task_handle = NULL;
 
  static bool stop_requested = false;
+ static volatile uint8_t pending_scenario_id = 0;
  
  static const scenario_definition_t *
  scenario_find(uint8_t id)
@@ -125,9 +120,12 @@
 
      scenario_state = SCENARIO_STATE_RUNNING;
      stop_requested = false;
+     pending_scenario_id = 0;
 
-     const int64_t start_time_us =
+     int64_t start_time_us =
          esp_timer_get_time();
+
+     uint32_t previous_breath_index = 0;
 
      TickType_t last_wake_time =
          xTaskGetTickCount();
@@ -137,66 +135,130 @@
          const int64_t now_us =
              esp_timer_get_time();
 
-         const float time_s =
+         float time_s =
              (float)(now_us - start_time_us) /
              1000000.0f;
 
-			 float target_tidal_volume_ml =
-			     scenario->tidal_volume_ml;
+         /*
+          * Determinamos en qué respiración del
+          * escenario actual estamos.
+          */
+         const float breath_period_s =
+             60.0f /
+             scenario->respiratory_rate_bpm;
 
-			 float breath_time_s = time_s;
+         uint32_t breath_index =
+             (uint32_t)(
+                 time_s /
+                 breath_period_s
+             );
 
-			 if (scenario->sigh_enabled)
-			 {
-			     const float breath_period_s =
-			         60.0f /
-			         scenario->respiratory_rate_bpm;
+         /*
+          * Si cambió el índice significa que terminó
+          * una respiración y comenzó la siguiente.
+          *
+          * Este es el único momento en el que
+          * permitimos cambiar de escenario.
+          */
+         if (breath_index != previous_breath_index)
+         {
+             previous_breath_index =
+                 breath_index;
 
-			     const uint32_t breath_index =
-			         (uint32_t)(
-			             time_s /
-			             breath_period_s
-			         );
+             if (pending_scenario_id != 0)
+             {
+                 const scenario_definition_t *next_scenario =
+                     scenario_find(
+                         pending_scenario_id
+                     );
 
-			     const uint32_t cycle_length =
-			         scenario->normal_breaths_before_sigh + 1;
+                 if (next_scenario != NULL)
+                 {
+                     ESP_LOGI(
+                         TAG,
+                         "Scenario transition %u -> %u",
+                         scenario->id,
+                         next_scenario->id
+                     );
 
-			     const uint32_t breath_in_cycle =
-			         breath_index % cycle_length;
+                     scenario =
+                         next_scenario;
 
-			     /*
-			      * Ejemplo con normal_breaths_before_sigh = 5:
-			      *
-			      * 0 -> normal
-			      * 1 -> normal
-			      * 2 -> normal
-			      * 3 -> normal
-			      * 4 -> normal
-			      * 5 -> sigh
-			      * 0 -> normal ...
-			      */
-			     if (breath_in_cycle ==
-			         scenario->normal_breaths_before_sigh)
-			     {
-			         target_tidal_volume_ml =
-			             scenario->sigh_tidal_volume_ml;
-			     }
+                     pending_scenario_id = 0;
 
-			     /*
-			      * Tiempo relativo a la respiración actual.
-			      */
-			     breath_time_s =
-			         time_s -
-			         ((float)breath_index *
-			          breath_period_s);
-			 }
+                     /*
+                      * El nuevo escenario comienza
+                      * exactamente en t = 0.
+                      */
+                     start_time_us =
+                         now_us;
 
-			 const float target_volume_ml =
-			     breath_reference_get_volume(
-			         scenario->respiratory_rate_bpm,
-			         target_tidal_volume_ml,
-			         breath_time_s
-			     );
+                     time_s = 0.0f;
+
+                     previous_breath_index = 0;
+                 }
+                 else
+                 {
+                     pending_scenario_id = 0;
+                 }
+             }
+         }
+
+
+         /*
+          * Generación de volumen objetivo.
+          */
+
+         float target_tidal_volume_ml =
+             scenario->tidal_volume_ml;
+
+         float breath_time_s =
+             time_s;
+
+
+         /*
+          * Escenario con suspiros.
+          */
+         if (scenario->sigh_enabled)
+         {
+             const float current_breath_period_s =
+                 60.0f /
+                 scenario->respiratory_rate_bpm;
+
+             const uint32_t current_breath_index =
+                 (uint32_t)(
+                     time_s /
+                     current_breath_period_s
+                 );
+
+             const uint32_t cycle_length =
+                 scenario->normal_breaths_before_sigh + 1;
+
+             const uint32_t breath_in_cycle =
+                 current_breath_index %
+                 cycle_length;
+
+             if (breath_in_cycle ==
+                 scenario->normal_breaths_before_sigh)
+             {
+                 target_tidal_volume_ml =
+                     scenario->sigh_tidal_volume_ml;
+             }
+
+             breath_time_s =
+                 time_s -
+                 ((float)current_breath_index *
+                  current_breath_period_s);
+         }
+
+
+         const float target_volume_ml =
+             breath_reference_get_volume(
+                 scenario->respiratory_rate_bpm,
+                 target_tidal_volume_ml,
+                 breath_time_s
+             );
+
 
          esp_err_t err =
              motor_control_move_to_volume(
@@ -217,18 +279,28 @@
              break;
          }
 
+
          vTaskDelayUntil(
              &last_wake_time,
-             pdMS_TO_TICKS(SCENARIO_UPDATE_MS)
+             pdMS_TO_TICKS(
+                 SCENARIO_UPDATE_MS
+             )
          );
      }
 
+
+     pending_scenario_id = 0;
+
      motor_control_stop();
 
-     if (scenario_state != SCENARIO_STATE_ERROR)
+
+     if (scenario_state !=
+         SCENARIO_STATE_ERROR)
      {
-         scenario_state = SCENARIO_STATE_IDLE;
+         scenario_state =
+             SCENARIO_STATE_IDLE;
      }
+
 
      scenario_task_handle = NULL;
 
@@ -345,6 +417,32 @@
      return scenario_state;
  }
 
+ esp_err_t scenario_request_change(uint8_t scenario_id)
+ {
+     if (scenario_state != SCENARIO_STATE_RUNNING)
+     {
+         return ESP_ERR_INVALID_STATE;
+     }
+
+     const scenario_definition_t *scenario =
+         scenario_find(scenario_id);
+
+     if (scenario == NULL)
+     {
+         return ESP_ERR_NOT_FOUND;
+     }
+
+     pending_scenario_id = scenario_id;
+
+     ESP_LOGI(
+         TAG,
+         "Scenario %u requested - waiting for end of breath",
+         scenario_id
+     );
+
+     return ESP_OK;
+ }
+ 
 
  bool scenario_is_running(void)
  {
