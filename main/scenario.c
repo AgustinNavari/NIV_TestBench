@@ -37,12 +37,31 @@
 
      const char *name;
 
+     /*
+      * Parámetros iniciales / normales.
+      */
      float respiratory_rate_bpm;
      float tidal_volume_ml;
 
+     /*
+      * Suspiro.
+      */
      bool sigh_enabled;
      uint8_t normal_breaths_before_sigh;
      float sigh_tidal_volume_ml;
+
+     /*
+      * Barrido progresivo.
+      */
+     bool sweep_enabled;
+     float final_respiratory_rate_bpm;
+     float final_tidal_volume_ml;
+     uint32_t sweep_duration_s;
+
+     /*
+      * 0 = sin timeout automático.
+      */
+     uint32_t max_duration_s;
 
  } scenario_definition_t;
 
@@ -56,7 +75,9 @@
 
 	    .sigh_enabled = true,
 	    .normal_breaths_before_sigh = 10,
-	    .sigh_tidal_volume_ml = 900.0f
+	    .sigh_tidal_volume_ml = 900.0f,
+		
+		.max_duration_s = 0
 	},
 	
 
@@ -64,22 +85,60 @@
          .id = 2,
          .name = "Normal 500 mL",
          .respiratory_rate_bpm = 30.0f,
-         .tidal_volume_ml = 300.0f
+         .tidal_volume_ml = 300.0f,
+		 .max_duration_s = 5 * 60
      },
 
      {
          .id = 3,
          .name = "Fast deep breathing",
          .respiratory_rate_bpm = 35.0f,
-         .tidal_volume_ml = 650.0f
+         .tidal_volume_ml = 650.0f,
+		 
+		 .max_duration_s = 5 * 60
      },
 
      {
          .id = 4,
-         .name = "Fast breathing",
+         .name = "Relaxed breathing",
          .respiratory_rate_bpm = 15.0f,
-         .tidal_volume_ml = 300.0f
-     }
+         .tidal_volume_ml = 400.0f,
+		 .max_duration_s = 5 * 60
+     },
+	 
+	 {
+	     .id = 5,
+	     .name = "Patient evolution",
+
+	     /*
+	      * Comienza en:
+	      * RR = 35 bpm
+	      * VT = 600 mL
+	      */
+	     .respiratory_rate_bpm = 29.0f,
+	     .tidal_volume_ml = 700.0f,
+
+	     .sweep_enabled = true,
+
+	     /*
+	      * Termina en:
+	      * RR = 20 bpm
+	      * VT = 400 mL
+	      */
+	     .final_respiratory_rate_bpm = 20.0f,
+	     .final_tidal_volume_ml = 400.0f,
+
+	     /*
+	      * 15 minutos.
+	      */
+	     .sweep_duration_s = 15 * 60,
+
+	     /*
+	      * No vuelve al basal automáticamente
+	      * después de 5 minutos.
+	      */
+	     .max_duration_s = 0
+	 }
  };
 
 
@@ -122,49 +181,77 @@
      stop_requested = false;
      pending_scenario_id = 0;
 
-     int64_t start_time_us =
+     /*
+      * Inicio del escenario actual.
+      * Se usa para calcular el progreso del sweep.
+      */
+     int64_t scenario_start_us =
          esp_timer_get_time();
 
-     uint32_t previous_breath_index = 0;
+     /*
+      * Inicio de la respiración actual.
+      */
+     int64_t breath_start_us =
+         scenario_start_us;
+
+     /*
+      * RR y VT usados durante la respiración actual.
+      * Permanecen constantes hasta terminar ese ciclo.
+      */
+     float current_rr =
+         scenario->respiratory_rate_bpm;
+
+     float current_vt =
+         scenario->tidal_volume_ml;
+
+     /*
+      * Contador utilizado por el escenario con suspiros.
+      */
+     uint32_t breath_number = 0;
 
      TickType_t last_wake_time =
          xTaskGetTickCount();
+
 
      while (!stop_requested)
      {
          const int64_t now_us =
              esp_timer_get_time();
 
-         float time_s =
-             (float)(now_us - start_time_us) /
-             1000000.0f;
 
          /*
-          * Determinamos en qué respiración del
-          * escenario actual estamos.
+          * Duración de ESTA respiración.
           */
          const float breath_period_s =
-             60.0f /
-             scenario->respiratory_rate_bpm;
+             60.0f / current_rr;
 
-         uint32_t breath_index =
-             (uint32_t)(
-                 time_s /
-                 breath_period_s
+         const int64_t breath_period_us =
+             (int64_t)(
+                 breath_period_s *
+                 1000000.0f
              );
 
-         /*
-          * Si cambió el índice significa que terminó
-          * una respiración y comenzó la siguiente.
-          *
-          * Este es el único momento en el que
-          * permitimos cambiar de escenario.
-          */
-         if (breath_index != previous_breath_index)
-         {
-             previous_breath_index =
-                 breath_index;
 
+         /*
+          * ¿Terminó la respiración actual?
+          */
+         if ((now_us - breath_start_us) >=
+             breath_period_us)
+         {
+             /*
+              * Usamos el límite teórico del ciclo
+              * para no acumular el error del task de 10 ms.
+              */
+             const int64_t breath_boundary_us =
+                 breath_start_us +
+                 breath_period_us;
+
+
+             /*
+              * =====================================
+              * CAMBIO DE ESCENARIO PENDIENTE
+              * =====================================
+              */
              if (pending_scenario_id != 0)
              {
                  const scenario_definition_t *next_scenario =
@@ -188,74 +275,169 @@
 
                      /*
                       * El nuevo escenario comienza
-                      * exactamente en t = 0.
+                      * exactamente entre respiraciones.
                       */
-                     start_time_us =
-                         now_us;
+                     scenario_start_us =
+                         breath_boundary_us;
 
-                     time_s = 0.0f;
+                     breath_start_us =
+                         breath_boundary_us;
 
-                     previous_breath_index = 0;
+                     breath_number = 0;
+
+                     current_rr =
+                         scenario->respiratory_rate_bpm;
+
+                     current_vt =
+                         scenario->tidal_volume_ml;
                  }
                  else
                  {
                      pending_scenario_id = 0;
                  }
              }
-         }
 
-
-         /*
-          * Generación de volumen objetivo.
-          */
-
-         float target_tidal_volume_ml =
-             scenario->tidal_volume_ml;
-
-         float breath_time_s =
-             time_s;
-
-
-         /*
-          * Escenario con suspiros.
-          */
-         if (scenario->sigh_enabled)
-         {
-             const float current_breath_period_s =
-                 60.0f /
-                 scenario->respiratory_rate_bpm;
-
-             const uint32_t current_breath_index =
-                 (uint32_t)(
-                     time_s /
-                     current_breath_period_s
-                 );
-
-             const uint32_t cycle_length =
-                 scenario->normal_breaths_before_sigh + 1;
-
-             const uint32_t breath_in_cycle =
-                 current_breath_index %
-                 cycle_length;
-
-             if (breath_in_cycle ==
-                 scenario->normal_breaths_before_sigh)
+             /*
+              * =====================================
+              * CONTINUAMOS EL MISMO ESCENARIO
+              * =====================================
+              */
+             else
              {
-                 target_tidal_volume_ml =
-                     scenario->sigh_tidal_volume_ml;
-             }
+                 breath_start_us =
+                     breath_boundary_us;
 
-             breath_time_s =
-                 time_s -
-                 ((float)current_breath_index *
-                  current_breath_period_s);
+                 breath_number++;
+
+
+                 /*
+                  * =================================
+                  * ESCENARIO CON BARRIDO
+                  * =================================
+                  */
+                 if (scenario->sweep_enabled)
+                 {
+                     const float elapsed_s =
+                         (float)(
+                             breath_boundary_us -
+                             scenario_start_us
+                         ) /
+                         1000000.0f;
+
+                     float progress =
+                         elapsed_s /
+                         (float)
+                         scenario->sweep_duration_s;
+
+                     if (progress > 1.0f)
+                     {
+                         progress = 1.0f;
+                     }
+
+
+                     /*
+                      * Interpolación lineal:
+                      *
+                      * RR:
+                      * 35 -> 20 bpm
+                      *
+                      * VT:
+                      * 600 -> 400 mL
+                      */
+                     current_rr =
+                         scenario->respiratory_rate_bpm +
+                         progress *
+                         (
+                             scenario->final_respiratory_rate_bpm -
+                             scenario->respiratory_rate_bpm
+                         );
+
+                     current_vt =
+                         scenario->tidal_volume_ml +
+                         progress *
+                         (
+                             scenario->final_tidal_volume_ml -
+                             scenario->tidal_volume_ml
+                         );
+
+
+                     ESP_LOGI(
+                         TAG,
+                         "Sweep: %.1f %%  RR=%.2f bpm  VT=%.1f mL",
+                         progress * 100.0f,
+                         current_rr,
+                         current_vt
+                     );
+                 }
+
+                 /*
+                  * =================================
+                  * ESCENARIO CON SUSPIROS
+                  * =================================
+                  */
+                 else if (scenario->sigh_enabled)
+                 {
+                     const uint32_t cycle_length =
+                         scenario->normal_breaths_before_sigh +
+                         1;
+
+                     const uint32_t breath_in_cycle =
+                         breath_number %
+                         cycle_length;
+
+
+                     if (breath_in_cycle ==
+                         scenario->normal_breaths_before_sigh)
+                     {
+                         current_vt =
+                             scenario->sigh_tidal_volume_ml;
+                     }
+                     else
+                     {
+                         current_vt =
+                             scenario->tidal_volume_ml;
+                     }
+
+                     current_rr =
+                         scenario->respiratory_rate_bpm;
+                 }
+
+                 /*
+                  * =================================
+                  * ESCENARIO NORMAL
+                  * =================================
+                  */
+                 else
+                 {
+                     current_rr =
+                         scenario->respiratory_rate_bpm;
+
+                     current_vt =
+                         scenario->tidal_volume_ml;
+                 }
+             }
          }
 
 
+         /*
+          * Tiempo dentro de la respiración actual.
+          */
+         const float breath_time_s =
+             (float)(
+                 now_us -
+                 breath_start_us
+             ) /
+             1000000.0f;
+
+
+         /*
+          * RR y VT permanecen constantes durante
+          * toda la respiración actual.
+          */
          const float target_volume_ml =
              breath_reference_get_volume(
-                 scenario->respiratory_rate_bpm,
-                 target_tidal_volume_ml,
+                 current_rr,
+                 current_vt,
                  breath_time_s
              );
 
@@ -264,6 +446,7 @@
              motor_control_move_to_volume(
                  target_volume_ml
              );
+
 
          if (err != ESP_OK)
          {
@@ -443,10 +626,28 @@
      return ESP_OK;
  }
  
+ uint32_t scenario_get_max_duration_s(uint8_t scenario_id)
+ {
+     const scenario_definition_t *scenario =
+         scenario_find(scenario_id);
+
+     if (scenario == NULL)
+     {
+         return 0;
+     }
+
+     return scenario->max_duration_s;
+ }
+ 
 
  bool scenario_is_running(void)
  {
      return scenario_state == SCENARIO_STATE_RUNNING;
+ }
+ 
+ bool scenario_change_pending(void)
+ {
+     return pending_scenario_id != 0;
  }
  
  uint8_t scenario_get_count(void)

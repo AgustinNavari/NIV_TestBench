@@ -26,11 +26,15 @@ esp_err_t scenario_stop(void);
 
 esp_err_t scenario_request_change(uint8_t scenario_id);
 
+uint32_t scenario_get_max_duration_s(uint8_t scenario_id);
+
 scenario_state_t scenario_get_state(void);
 
 bool scenario_is_running(void);
 
 uint8_t scenario_get_count(void);
+
+bool scenario_change_pending(void);
 
 
 #endif

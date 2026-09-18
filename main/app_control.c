@@ -32,7 +32,7 @@
  #define BUTTON_POLL_MS        10
  #define BUTTON_DEBOUNCE_MS    50
  #define BUTTON_LONG_PRESS_MS  3000
- #define DEMANDING_TIMEOUT_US  (5LL * 60LL * 1000000LL)
+
 
  
  static app_state_t app_state =
@@ -200,21 +200,14 @@
      );
 
 
-     if (start_scenario_after_home)
-     {
-         start_scenario_after_home = false;
+	 if (start_scenario_after_home)
+	 {
+	     start_scenario_after_home = false;
 
-		 esp_err_t err =
-		     scenario_request_change(1);
+	     start_scenario_running(1);
 
-		 if (err == ESP_OK)
-		 {
-		     current_scenario = 1;
-		     demanding_start_us = 0;
-		 }
-
-         return;
-     }
+	     return;
+	 }
 
 
      /*
@@ -258,7 +251,10 @@
          APP_STATE_SCENARIO;
 
 
-     if (id > 1)
+     uint32_t timeout_s =
+         scenario_get_max_duration_s(id);
+
+     if (timeout_s > 0)
      {
          demanding_start_us =
              esp_timer_get_time();
@@ -346,6 +342,21 @@
 
 		case APP_STATE_SCENARIO:
 		{
+		    /*
+		     * No permitir que una nueva pulsación
+		     * sobrescriba una transición pendiente.
+		     */
+		    if (scenario_change_pending())
+		    {
+		        ESP_LOGI(
+		            TAG,
+		            "Scenario transition already pending"
+		        );
+
+		        break;
+		    }
+
+
 		    uint8_t next =
 		        current_scenario + 1;
 
@@ -357,18 +368,19 @@
 		        next = 1;
 		    }
 
+
 		    esp_err_t err =
 		        scenario_request_change(next);
 
 		    if (err == ESP_OK)
 		    {
-		        /*
-		         * Guardamos cuál será el escenario
-		         * seleccionado.
-		         */
 		        current_scenario = next;
 
-		        if (next > 1)
+
+		        uint32_t timeout_s =
+		            scenario_get_max_duration_s(next);
+
+		        if (timeout_s > 0)
 		        {
 		            demanding_start_us =
 		                esp_timer_get_time();
@@ -377,6 +389,7 @@
 		        {
 		            demanding_start_us = 0;
 		        }
+
 
 		        ESP_LOGI(
 		            TAG,
@@ -394,9 +407,9 @@
 		        );
 		    }
 
+
 		    break;
 		}
-
 
          case APP_STATE_SERIAL:
 
@@ -542,35 +555,47 @@
  
  static void process_scenario_timeout(void)
  {
-     if (app_state !=
-         APP_STATE_SCENARIO)
+     if (app_state != APP_STATE_SCENARIO)
      {
          return;
      }
+
+     uint32_t timeout_s =
+         scenario_get_max_duration_s(
+             current_scenario
+         );
 
      /*
-      * Scenario 1 no tiene timeout.
+      * 0 = sin timeout automático
       */
-     if (current_scenario <= 1)
+     if (timeout_s == 0)
      {
          return;
      }
-
 
      const int64_t elapsed_us =
          esp_timer_get_time() -
          demanding_start_us;
 
+     const int64_t timeout_us =
+         (int64_t)timeout_s *
+         1000000LL;
 
-     if (elapsed_us >=
-         DEMANDING_TIMEOUT_US)
+     if (elapsed_us >= timeout_us)
      {
          ESP_LOGI(
              TAG,
-             "Demanding scenario timeout -> basal"
+             "Scenario timeout -> basal"
          );
 
-         start_scenario_running(1);
+         esp_err_t err =
+             scenario_request_change(1);
+
+         if (err == ESP_OK)
+         {
+             current_scenario = 1;
+             demanding_start_us = 0;
+         }
      }
  }
  
