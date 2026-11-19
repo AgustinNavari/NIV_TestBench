@@ -115,8 +115,8 @@
 	      * RR = 35 bpm
 	      * VT = 600 mL
 	      */
-	     .respiratory_rate_bpm = 29.0f,
-	     .tidal_volume_ml = 700.0f,
+	     .respiratory_rate_bpm = 37.0f,
+	     .tidal_volume_ml = 300.0f,
 
 	     .sweep_enabled = true,
 
@@ -126,7 +126,7 @@
 	      * VT = 400 mL
 	      */
 	     .final_respiratory_rate_bpm = 20.0f,
-	     .final_tidal_volume_ml = 400.0f,
+	     .final_tidal_volume_ml = 700.0f,
 
 	     /*
 	      * 15 minutos.
